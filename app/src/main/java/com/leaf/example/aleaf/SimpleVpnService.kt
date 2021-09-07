@@ -1,4 +1,4 @@
-package com.leaf.example.aleaf
+package com.Safa.VPN
 
 import android.annotation.TargetApi
 import android.app.Notification
@@ -18,23 +18,24 @@ import android.net.VpnService
 import android.os.Build
 import android.system.Os.setenv
 import androidx.core.app.NotificationCompat
-import java.io.File
-import java.io.FileOutputStream
-import java.io.IOException
 import java.net.ServerSocket
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
+import android.util.Base64
+import android.util.Log
+import java.io.*
 
-class SimpleVpnService: VpnService() {
+class SimpleVpnService : VpnService() {
     private lateinit var leafThread: Thread
     private lateinit var protectThread: Thread
     private var running = AtomicBoolean()
     private val protectServerPort = 1085
     private lateinit var protectServer: ServerSocket
 
+
     init {
-        System.loadLibrary("leafandroid")
+        System.loadLibrary("safaandroid")
     }
 
     private external fun runLeaf(configPath: String)
@@ -80,8 +81,10 @@ class SimpleVpnService: VpnService() {
         @TargetApi(Build.VERSION_CODES.O)
         fun createNotificationChannel(channelId: String, channelName: String): String {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val chan = NotificationChannel(channelId,
-                    channelName, NotificationManager.IMPORTANCE_LOW)
+                val chan = NotificationChannel(
+                    channelId,
+                    channelName, NotificationManager.IMPORTANCE_LOW
+                )
                 chan.lightColor = Color.BLUE
                 chan.lockscreenVisibility = Notification.VISIBILITY_PRIVATE
                 val service = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -93,7 +96,10 @@ class SimpleVpnService: VpnService() {
 
         val channelId =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                createNotificationChannel(getString(R.string.app_name), getString(R.string.app_name))
+                createNotificationChannel(
+                    getString(R.string.app_name),
+                    getString(R.string.app_name)
+                )
             } else {
                 // If earlier version channel ID is not used
                 // https://developer.android.com/reference/android/support/v4/app/NotificationCompat.Builder.html#NotificationCompat.Builder(android.content.Context)
@@ -115,7 +121,8 @@ class SimpleVpnService: VpnService() {
         val stopIntent = Intent(this, SimpleVpnService::class.java)
         stopIntent.action = "stop_vpn_action"
         val pendingPrevIntent = PendingIntent.getService(this, 0, stopIntent, 0)
-        val prevAction = NotificationCompat.Action(android.R.drawable.ic_media_pause, "Stop", pendingPrevIntent)
+        val prevAction =
+            NotificationCompat.Action(android.R.drawable.ic_media_pause, "Stop", pendingPrevIntent)
         builder.addAction(prevAction)
 
         val bigTextStyle = NotificationCompat.BigTextStyle()
@@ -140,6 +147,7 @@ class SimpleVpnService: VpnService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        var configFile = File(filesDir, "config.conf")
         if (prepare(this) != null) {
             println("VPN not prepared, handling in another activity.")
             return START_NOT_STICKY
@@ -201,39 +209,14 @@ class SimpleVpnService: VpnService() {
                 .addAddress("10.255.0.1", 30)
                 .addDnsServer("1.1.1.1")
                 .addRoute("0.0.0.0", 0).establish()
-
+            var configContent: String = FileInputStream(configFile).bufferedReader().use(
+                BufferedReader::readText)
             var configFile = File(filesDir, "config.conf")
-            var configContent = """
-            [General]
-            loglevel = info
-            dns-server = 114.114.114.114, 223.5.5.5
-            routing-domain-resolve = true
-            tun-fd = REPLACE-ME-WITH-THE-FD
-
-            [Proxy]
-            Direct = direct
-            Reject = reject
-
-            p13 = trojan, 141.101.121.53, 443, password=123456, sni=sw.kitslabs.com, ws=true, ws-path=/amux, ws-host=sw.kitslabs.com, amux=true
-            p14 = trojan, 141.101.115.111, 443, password=123456, sni=sw.kitslabs.com, ws=true, ws-path=/amux, ws-host=sw.kitslabs.com, amux=true
-            p15 = trojan, 141.101.114.172, 443, password=123456, sni=sw.kitslabs.com, ws=true, ws-path=/amux, ws-host=sw.kitslabs.com, amux=true
-            p16 = trojan, 1.1.1.42, 443, password=123456, sni=sw.kitslabs.com, ws=true, ws-path=/amux, ws-host=sw.kitslabs.com, amux=true
-            p17 = trojan, 1.1.1.1, 443, password=123456, sni=sw.kitslabs.com, ws=true, ws-path=/amux, ws-host=sw.kitslabs.com, amux=true
-            p18 = trojan, 1.0.0.1, 443, password=123456, sni=sw.kitslabs.com, ws=true, ws-path=/amux, ws-host=sw.kitslabs.com, amux=true
-
-
-            [Proxy Group]
-            Proxy = failover, p13, p14, p15, p16, p17, p18, health-check=true, check-interval=600, fail-timeout=3
-
-            [Rule]
-            EXTERNAL, site:category-ads-all, Reject
-            GEOIP, cn, Direct
-            EXTERNAL, site:cn, Direct
-            EXTERNAL, site:geolocation-!cn, Proxy
-            FINAL, Proxy
-            """
             configContent =
-                configContent.replace("REPLACE-ME-WITH-THE-FD", tunFd?.detachFd()?.toLong().toString())
+                configContent.replace(
+                    "REPLACE-ME-WITH-THE-FD",
+                    tunFd?.detachFd()?.toLong().toString()
+                )
             FileOutputStream(configFile).use {
                 it.write(configContent.toByteArray())
             }
